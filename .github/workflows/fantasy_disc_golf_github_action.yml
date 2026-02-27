@@ -1,0 +1,58 @@
+name: Fantasy Disc Golf - Auto Score Update
+
+on:
+  # Run every 2 hours on event weekends (Fri-Sun)
+  schedule:
+    - cron: '0 */2 * * 5,6,0'   # Fri, Sat, Sun every 2 hours
+    - cron: '0 20 * * 1'         # Monday evening for final results
+  
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      tourn_id:
+        description: 'PDGA Tournament ID'
+        required: true
+      event_name:
+        description: 'Event name (must match SCHEDULE keys in script)'
+        required: true
+      final:
+        description: 'Fetch final results? (true/false)'
+        default: 'false'
+
+jobs:
+  update-scores:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests gspread google-auth
+
+      - name: Write Google credentials
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
+
+      - name: Run score update (scheduled)
+        if: github.event_name == 'schedule'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: |
+          # Edit this to match the current active event
+          python fantasy_disc_golf.py \
+            --event "Supreme Flight Open" \
+            --tourn-id 101154
+
+      - name: Run score update (manual)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: |
+          python fantasy_disc_golf.py \
+            --tourn-id ${{ github.event.inputs.tourn_id }} \
+            --event "${{ github.event.inputs.event_name }}" \
+            ${{ github.event.inputs.final == 'true' && '--final' || '' }}
